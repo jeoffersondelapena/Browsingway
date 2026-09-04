@@ -27,6 +27,7 @@ internal class RenderProcess : IDisposable
 	private readonly int _cacheSlot;
 
 	public int CacheSlot => _cacheSlot;
+	public uint RestartCount => _restartCount;
 
 	private const string _cefCacheDirName = "cef-cache";
 	private const int _maxCacheSlots = 16;
@@ -260,6 +261,7 @@ internal class RenderProcess : IDisposable
 		{
 			Services.PluginLog.Error("Render process is crashing in a loop - please check the logs. No further restarts will be attempted until Browsingway is restarted.");
 			DiagLog.Write($"giving up after {_maxRestarts} restarts; no browser until the plugin is reloaded");
+			Services.Chat.PrintError($"Browsingway: renderer failed {_maxRestarts} times; overlays are off until the plugin is restarted.");
 			Stop();
 			_rpc.Clear(rpc => rpc.Dispose());
 			OnProcessCrashed();

@@ -88,6 +88,7 @@ public class Plugin : IDalamudPlugin
 			if (!msg.HasDxSharedTexturesSupport)
 			{
 				Services.PluginLog.Error("Could not initialize shared textures transport. Browsingway will not work.");
+				Services.Chat.PrintError("Browsingway: shared textures unsupported; overlays cannot work.");
 				return;
 			}
 
@@ -96,6 +97,11 @@ public class Plugin : IDalamudPlugin
 				if (_settings is not null)
 				{
 					_settings.HydrateOverlays();
+					int port = CacheSlotPolicy.PortForSlot(_renderProcess.CacheSlot);
+					uint restarts = _renderProcess.RestartCount;
+					Services.Chat.Print(restarts == 0
+						? $"Browsingway: overlays ready on port {port}."
+						: $"Browsingway: overlays recovered after {restarts} renderer restart(s) on port {port}.");
 				}
 			});
 		};
