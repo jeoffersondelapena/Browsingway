@@ -79,7 +79,7 @@ internal class RenderProcess : IDisposable
 		catch (Exception) { }
 	}
 
-	private static void SweepAbandonedRenderers(string configDir)
+	private void SweepAbandonedRenderers(string configDir)
 	{
 		foreach (string dir in Directory.EnumerateDirectories(configDir, $"{_cefCacheDirName}*"))
 		{
@@ -92,7 +92,8 @@ internal class RenderProcess : IDisposable
 					continue;
 				}
 
-				if (IsAlive(gamePid))
+				// Wine reuses the same pid for every launch, so a record naming this game predates it
+				if (gamePid != _parentPid && IsAlive(gamePid))
 				{
 					continue;
 				}
@@ -118,7 +119,7 @@ internal class RenderProcess : IDisposable
 		catch (Exception) { return false; }
 	}
 
-	private static (string dir, FileStream? slotLock) ClaimCacheSlot(string configDir)
+	private (string dir, FileStream? slotLock) ClaimCacheSlot(string configDir)
 	{
 		SweepAbandonedRenderers(configDir);
 
