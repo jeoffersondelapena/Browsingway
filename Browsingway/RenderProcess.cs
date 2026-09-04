@@ -47,7 +47,9 @@ internal class RenderProcess : IDisposable
 		_pluginDir = pluginDir;
 		_parentPid = pid;
 
+		DiagLog.Open(configDir, pid);
 		(_cefCacheDir, _cacheSlotLock) = ClaimCacheSlot(configDir);
+		DiagLog.Write($"using cache slot {_cefCacheDir}, lock {(_cacheSlotLock is null ? "unheld" : "held")}");
 
 		try
 		{
@@ -99,6 +101,7 @@ internal class RenderProcess : IDisposable
 				{
 					Process.GetProcessById(rendererPid).Kill();
 					Services.PluginLog.Info($"Removed renderer {rendererPid} left behind by game {gamePid} in {dir}");
+					DiagLog.Write($"swept renderer {rendererPid} left behind by game {gamePid} in {dir}");
 				}
 
 				File.Delete(owner);
@@ -182,6 +185,7 @@ internal class RenderProcess : IDisposable
 		_process.BeginOutputReadLine();
 		_process.BeginErrorReadLine();
 		RecordOwner();
+		DiagLog.Write("renderer started", _process);
 
 		_running = true;
 	}
@@ -217,6 +221,7 @@ internal class RenderProcess : IDisposable
 		if (_restartCount >= _maxRestarts)
 		{
 			Services.PluginLog.Error("Render process is crashing in a loop - please check the logs. No further restarts will be attempted until Browsingway is restarted.");
+			DiagLog.Write($"giving up after {_maxRestarts} restarts; no browser until the plugin is reloaded");
 			Stop();
 			Rpc?.Dispose();
 			Rpc = null;
@@ -233,11 +238,13 @@ internal class RenderProcess : IDisposable
 					// process crashed, restart
 					_restartCount++;
 					Services.PluginLog.Error($"Render process crashed - will restart asap (attempt {_restartCount}/{_maxRestarts}).");
+						DiagLog.Write($"renderer crashed, restart {_restartCount}/{_maxRestarts}");
 					_process = SetupProcess();
 					_process.Start();
 					_process.BeginOutputReadLine();
 					_process.BeginErrorReadLine();
 					RecordOwner();
+					DiagLog.Write("renderer restarted", _process);
 
 					// notify everyone that we have to reinit
 					OnProcessCrashed();
@@ -278,6 +285,7 @@ internal class RenderProcess : IDisposable
 		catch (Exception) { }
 
 		ClearOwner();
+		DiagLog.Write("renderer stopped, cache slot released");
 	}
 
 	private bool _hasExited = false;
@@ -338,8 +346,16 @@ internal class RenderProcess : IDisposable
 			RedirectStandardError = true
 		};
 
-		process.OutputDataReceived += (_, args) => Services.PluginLog.Info($"[Render]: {args.Data}");
-		process.ErrorDataReceived += (_, args) => Services.PluginLog.Error($"[Render]: {args.Data}");
+		process.OutputDataReceived += (_, args) =>
+		{
+			Services.PluginLog.Info($"[Render]: {args.Data}");
+			DiagLog.Write($"out: {args.Data}");
+		};
+		process.ErrorDataReceived += (_, args) =>
+		{
+			Services.PluginLog.Error($"[Render]: {args.Data}");
+			DiagLog.Write($"err: {args.Data}");
+		};
 
 		return process;
 	}
