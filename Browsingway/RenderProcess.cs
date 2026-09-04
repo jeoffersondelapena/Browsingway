@@ -53,7 +53,9 @@ internal class RenderProcess : IDisposable
 
 		try
 		{
+			DiagLog.Write($"opening ipc channel {_ipcChannelName}");
 			Rpc = new BrowsingwayRpc(_ipcChannelName);
+			DiagLog.Write("ipc channel open");
 			_process = SetupProcess();
 		}
 		catch
@@ -246,7 +248,10 @@ internal class RenderProcess : IDisposable
 					// process crashed, restart
 					_restartCount++;
 					Services.PluginLog.Error($"Render process crashed - will restart asap (attempt {_restartCount}/{_maxRestarts}).");
-						DiagLog.Write($"renderer crashed, restart {_restartCount}/{_maxRestarts}");
+					DiagLog.Write($"renderer crashed, restart {_restartCount}/{_maxRestarts}");
+					Rpc?.Dispose();
+					Rpc = new BrowsingwayRpc(_ipcChannelName);
+					DiagLog.Write("ipc channel rebuilt for the restart");
 					_process = SetupProcess();
 					_process.Start();
 					_process.BeginOutputReadLine();

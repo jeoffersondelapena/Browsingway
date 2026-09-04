@@ -51,10 +51,12 @@ internal static class Program
 
 		AppDomain.CurrentDomain.FirstChanceException += (_, e) => Console.Error.WriteLine(e.Exception.ToString());
 
+		// Connect first: the plugin's shared memory sections can vanish during DX and CEF startup
+		InitializeIpc(args.IpcChannelName);
+		Console.WriteLine("IPC connected.");
+
 		bool dxRunning = DxHandler.Initialise(new LUID {LowPart = args.DxgiAdapterLuidLow, HighPart = args.DxgiAdapterLuidHigh});
 		CefHandler.Initialise(_cefAssemblyDir, args.CefCacheDir, args.ParentPid);
-
-		InitializeIpc(args.IpcChannelName);
 
 		Console.WriteLine("Notifying on ready state.");
 
