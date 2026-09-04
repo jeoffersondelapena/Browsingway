@@ -76,8 +76,9 @@ internal static class Program
 
 		_ready.Abandon();
 
-		DxHandler.Shutdown();
+		// CEF releases its shared textures on the way down, which needs the device still alive.
 		CefHandler.Shutdown();
+		DxHandler.Shutdown();
 	}
 
 	// TODO: move RPC stuff away
