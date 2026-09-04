@@ -61,8 +61,64 @@ internal class RenderProcess : IDisposable
 		}
 	}
 
+	private string OwnerFilePath => Path.Combine(_cefCacheDir, "owner.pid");
+
+	private void RecordOwner()
+	{
+		// A renderer outliving its game keeps CEF's profile lock, blocking whoever claims that
+		// slot next; recording both pids lets the next start find and remove it.
+		try { File.WriteAllText(OwnerFilePath, $"{_parentPid} {_process.Id}"); }
+		catch (Exception e) { Services.PluginLog.Debug($"Could not record cache slot owner: {e.Message}"); }
+	}
+
+	private void ClearOwner()
+	{
+		try { File.Delete(OwnerFilePath); }
+		catch (Exception) { }
+	}
+
+	private static void SweepAbandonedRenderers(string configDir)
+	{
+		foreach (string dir in Directory.EnumerateDirectories(configDir, $"{_cefCacheDirName}*"))
+		{
+			string owner = Path.Combine(dir, "owner.pid");
+			try
+			{
+				string[] pids = File.ReadAllText(owner).Split(' ');
+				if (pids.Length != 2 || !int.TryParse(pids[0], out int gamePid) || !int.TryParse(pids[1], out int rendererPid))
+				{
+					continue;
+				}
+
+				if (IsAlive(gamePid))
+				{
+					continue;
+				}
+
+				if (IsAlive(rendererPid))
+				{
+					Process.GetProcessById(rendererPid).Kill();
+					Services.PluginLog.Info($"Removed renderer {rendererPid} left behind by game {gamePid} in {dir}");
+				}
+
+				File.Delete(owner);
+			}
+			catch (FileNotFoundException) { }
+			catch (DirectoryNotFoundException) { }
+			catch (Exception e) { Services.PluginLog.Warning($"Could not check {owner}: {e.Message}"); }
+		}
+	}
+
+	private static bool IsAlive(int pid)
+	{
+		try { return !Process.GetProcessById(pid).HasExited; }
+		catch (Exception) { return false; }
+	}
+
 	private static (string dir, FileStream? slotLock) ClaimCacheSlot(string configDir)
 	{
+		SweepAbandonedRenderers(configDir);
+
 		// Claimed once here, not in SetupProcess, so the profile dir stays stable across renderer restarts.
 		// Slot 1 keeps the original name; the OS releases the lock however the process ends.
 		string firstDir = Path.Combine(configDir, _cefCacheDirName);
@@ -125,6 +181,7 @@ internal class RenderProcess : IDisposable
 		_process.Start();
 		_process.BeginOutputReadLine();
 		_process.BeginErrorReadLine();
+		RecordOwner();
 
 		_running = true;
 	}
@@ -180,6 +237,7 @@ internal class RenderProcess : IDisposable
 					_process.Start();
 					_process.BeginOutputReadLine();
 					_process.BeginErrorReadLine();
+					RecordOwner();
 
 					// notify everyone that we have to reinit
 					OnProcessCrashed();
@@ -210,11 +268,16 @@ internal class RenderProcess : IDisposable
 		handle.Set();
 		handle.Dispose();
 
-		// Give the process a sec to gracefully shut down, then kill it
+		// Give the process a sec to gracefully shut down, then kill it. The slot is only free once
+		// the renderer and its CEF children are gone, so wait for that before returning.
 		try { _process.WaitForExit(1000); }
 		catch (InvalidOperationException) { }
-		try { _process.Kill(); }
-		catch (InvalidOperationException) { }
+		try { _process.Kill(true); }
+		catch (Exception) { }
+		try { _process.WaitForExit(3000); }
+		catch (Exception) { }
+
+		ClearOwner();
 	}
 
 	private bool _hasExited = false;
