@@ -45,32 +45,32 @@ internal class Overlay : IDisposable
 	public void Dispose()
 	{
 		_textureHandler?.Dispose();
-		_ = _renderProcess.Rpc?.RemoveOverlay(RenderGuid);
+		_renderProcess.Send(rpc => rpc.RemoveOverlay(RenderGuid));
 	}
 
 	public void Navigate(string newUrl)
 	{
-		_ = _renderProcess.Rpc?.Navigate(RenderGuid, newUrl);
+		_renderProcess.Send(rpc => rpc.Navigate(RenderGuid, newUrl));
 	}
 
 	public void InjectUserCss(string css)
 	{
-		_ = _renderProcess.Rpc?.InjectUserCss(RenderGuid, css);
+		_renderProcess.Send(rpc => rpc.InjectUserCss(RenderGuid, css));
 	}
 
 	public void Zoom(float zoom)
 	{
-		_ = _renderProcess.Rpc?.Zoom(RenderGuid, zoom);
+		_renderProcess.Send(rpc => rpc.Zoom(RenderGuid, zoom));
 	}
 
 	public void Mute(bool mute)
 	{
-		_ = _renderProcess.Rpc?.Mute(RenderGuid, mute);
+		_renderProcess.Send(rpc => rpc.Mute(RenderGuid, mute));
 	}
 
 	public void Debug()
 	{
-		_ = _renderProcess.Rpc?.Debug(RenderGuid);
+		_renderProcess.Send(rpc => rpc.Debug(RenderGuid));
 	}
 
 	public void SetCursor(Cursor cursor)
@@ -105,7 +105,7 @@ internal class Overlay : IDisposable
 		// If the event isn't something we're tracking, bail early with no capture
 		if (eventType == null) { return (false, 0); }
 
-		_ = _renderProcess.Rpc?.KeyEvent(RenderGuid, (int)msg, (int)wParam, (int)lParam);
+		_renderProcess.Send(rpc => rpc.KeyEvent(RenderGuid, (int)msg, (int)wParam, (int)lParam));
 
 		// We've handled the input, signal. For these message types, `0` signals a capture.
 		return (true, 0);
@@ -265,7 +265,7 @@ internal class Overlay : IDisposable
 			if (_mouseInWindow)
 			{
 				_mouseInWindow = false;
-				_ = _renderProcess.Rpc?.MouseButton(new MouseButtonMessage() {Guid = RenderGuid.ToByteArray(), X = (int)mousePos.X, Y = (int)mousePos.Y, Leaving = true});
+				_renderProcess.Send(rpc => rpc.MouseButton(new MouseButtonMessage() {Guid = RenderGuid.ToByteArray(), X = (int)mousePos.X, Y = (int)mousePos.Y, Leaving = true}));
 			}
 
 			return;
@@ -289,7 +289,7 @@ internal class Overlay : IDisposable
 		if (io.KeyAlt) { modifier |= InputModifier.Alt; }
 
 		// TODO: Either this or the entire handler function should be asynchronous so we're not blocking the entire draw thread
-		_ = _renderProcess.Rpc?.MouseButton(new MouseButtonMessage()
+		_renderProcess.Send(rpc => rpc.MouseButton(new MouseButtonMessage()
 		{
 			Guid = RenderGuid.ToByteArray(),
 			X = mousePos.X,
@@ -300,7 +300,7 @@ internal class Overlay : IDisposable
 			WheelX = wheelX,
 			WheelY = wheelY,
 			Modifier = modifier
-		});
+		}));
 	}
 
 	private void HandleWindowSize()
@@ -310,7 +310,7 @@ internal class Overlay : IDisposable
 
 		if (_size == Vector2.Zero)
 		{
-			_ = _renderProcess.Rpc?.NewOverlay(new NewOverlayMessage()
+			_renderProcess.Send(rpc => rpc.NewOverlay(new NewOverlayMessage()
 			{
 				Guid = RenderGuid.ToByteArray(),
 				Id = _overlayConfig.Name,
@@ -321,11 +321,11 @@ internal class Overlay : IDisposable
 				Framerate = _overlayConfig.Framerate,
 				Muted = _overlayConfig.Muted,
 				CustomCss = _overlayConfig.CustomCss
-			});
+			}));
 		}
 		else
 		{
-			_ = _renderProcess.Rpc?.ResizeOverlay(RenderGuid, (int)currentSize.X, (int)currentSize.Y);
+			_renderProcess.Send(rpc => rpc.ResizeOverlay(RenderGuid, (int)currentSize.X, (int)currentSize.Y));
 		}
 
 		_resizing = true;

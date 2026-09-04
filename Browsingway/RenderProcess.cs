@@ -8,7 +8,11 @@ namespace Browsingway;
 internal class RenderProcess : IDisposable
 {
 	public event EventHandler? Crashed;
-	public BrowsingwayRpc? Rpc { get; private set; }
+	public event Action<SetCursorMessage>? SetCursor;
+	public event Action<RendererReadyMessage>? RendererReady;
+	public event Action<UpdateTextureMessage>? UpdateTexture;
+
+	private readonly Guarded<BrowsingwayRpc> _rpc = new();
 
 	private readonly DependencyManager _dependencyManager;
 
@@ -54,7 +58,7 @@ internal class RenderProcess : IDisposable
 		try
 		{
 			DiagLog.Write($"opening ipc channel {_ipcChannelName}");
-			Rpc = new BrowsingwayRpc(_ipcChannelName);
+			OpenChannel();
 			DiagLog.Write("ipc channel open");
 			_process = SetupProcess();
 		}
@@ -65,13 +69,30 @@ internal class RenderProcess : IDisposable
 		}
 	}
 
+	/// <summary>Sends on the current channel, or drops the call if there is none.</summary>
+	public void Send(Action<BrowsingwayRpc> call) => _rpc.Use(call);
+
+	private void OpenChannel()
+	{
+		_rpc.Replace(() =>
+		{
+			BrowsingwayRpc rpc = new(_ipcChannelName);
+			// Forwarding is re-attached per channel; binding subscribers to the instance would drop
+			// them on a restart, leaving a healthy renderer with no overlays.
+			rpc.SetCursor += msg => SetCursor?.Invoke(msg);
+			rpc.RendererReady += msg => RendererReady?.Invoke(msg);
+			rpc.UpdateTexture += msg => UpdateTexture?.Invoke(msg);
+			return rpc;
+		}, rpc => rpc.Dispose());
+	}
+
 	private string OwnerFilePath => Path.Combine(_cefCacheDir, "owner.pid");
 
 	private void RecordOwner()
 	{
 		// A renderer outliving its game keeps CEF's profile lock, blocking whoever claims that
 		// slot next; recording both pids lets the next start find and remove it.
-		try { File.WriteAllText(OwnerFilePath, $"{_parentPid} {_process.Id}"); }
+		try { File.WriteAllText(OwnerFilePath, CacheSlotPolicy.FormatOwner(_parentPid, _process.Id)); }
 		catch (Exception e) { Services.PluginLog.Debug($"Could not record cache slot owner: {e.Message}"); }
 	}
 
@@ -88,22 +109,20 @@ internal class RenderProcess : IDisposable
 			string owner = Path.Combine(dir, "owner.pid");
 			try
 			{
-				string[] pids = File.ReadAllText(owner).Split(' ');
-				if (pids.Length != 2 || !int.TryParse(pids[0], out int gamePid) || !int.TryParse(pids[1], out int rendererPid))
+				if (!CacheSlotPolicy.TryParseOwner(File.ReadAllText(owner), out int gamePid, out int rendererPid))
 				{
 					continue;
 				}
 
-				// Wine reuses the same pid for every launch, so a record naming this game predates it
-				if (gamePid != _parentPid && IsAlive(gamePid))
+				if (!CacheSlotPolicy.RecordIsAbandoned(gamePid, _parentPid, IsAlive(gamePid)))
 				{
 					continue;
 				}
 
-				if (IsAlive(rendererPid))
+				Process? renderer = TryGetProcess(rendererPid);
+				if (CacheSlotPolicy.ShouldKillRenderer(renderer is not null, renderer?.ProcessName))
 				{
-					Process renderer = Process.GetProcessById(rendererPid);
-					renderer.Kill();
+					renderer!.Kill();
 					if (!renderer.WaitForExit(5000))
 					{
 						DiagLog.Write($"renderer {rendererPid} did not exit; leaving {dir} to the next slot");
@@ -122,10 +141,16 @@ internal class RenderProcess : IDisposable
 		}
 	}
 
-	private static bool IsAlive(int pid)
+	private static bool IsAlive(int pid) => TryGetProcess(pid) is not null;
+
+	private static Process? TryGetProcess(int pid)
 	{
-		try { return !Process.GetProcessById(pid).HasExited; }
-		catch (Exception) { return false; }
+		try
+		{
+			Process process = Process.GetProcessById(pid);
+			return process.HasExited ? null : process;
+		}
+		catch (Exception) { return null; }
 	}
 
 	private (string dir, FileStream? slotLock) ClaimCacheSlot(string configDir)
@@ -139,7 +164,7 @@ internal class RenderProcess : IDisposable
 
 		for (int slot = 1; slot <= _maxCacheSlots; slot++)
 		{
-			string name = slot == 1 ? _cefCacheDirName : $"{_cefCacheDirName}-{slot}";
+			string name = CacheSlotPolicy.SlotName(_cefCacheDirName, slot);
 			string dir = Path.Combine(configDir, name);
 
 			try
@@ -176,7 +201,7 @@ internal class RenderProcess : IDisposable
 			Stop();
 
 			_process.Dispose();
-			Rpc?.Dispose();
+			_rpc.Clear(rpc => rpc.Dispose());
 		}
 		finally
 		{
@@ -233,8 +258,7 @@ internal class RenderProcess : IDisposable
 			Services.PluginLog.Error("Render process is crashing in a loop - please check the logs. No further restarts will be attempted until Browsingway is restarted.");
 			DiagLog.Write($"giving up after {_maxRestarts} restarts; no browser until the plugin is reloaded");
 			Stop();
-			Rpc?.Dispose();
-			Rpc = null;
+			_rpc.Clear(rpc => rpc.Dispose());
 			OnProcessCrashed();
 			return;
 		}
@@ -249,8 +273,7 @@ internal class RenderProcess : IDisposable
 					_restartCount++;
 					Services.PluginLog.Error($"Render process crashed - will restart asap (attempt {_restartCount}/{_maxRestarts}).");
 					DiagLog.Write($"renderer crashed, restart {_restartCount}/{_maxRestarts}");
-					Rpc?.Dispose();
-					Rpc = new BrowsingwayRpc(_ipcChannelName);
+					OpenChannel();
 					DiagLog.Write("ipc channel rebuilt for the restart");
 					_process = SetupProcess();
 					_process.Start();
@@ -298,7 +321,7 @@ internal class RenderProcess : IDisposable
 		catch (Exception) { }
 
 		ClearOwner();
-		DiagLog.Write("renderer stopped, cache slot released");
+		DiagLog.Write("renderer stopped, owner record cleared (slot lock held until unload)");
 	}
 
 	private bool _hasExited = false;
