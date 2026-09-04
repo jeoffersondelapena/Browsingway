@@ -21,6 +21,9 @@ public class Plugin : IDalamudPlugin
 	private readonly string _pluginDir;
 
 	private RenderProcess? _renderProcess;
+	private Timer? _readyWatchdog;
+	private volatile bool _rendererReady;
+	private const int _readyTimeoutMs = 20000;
 	private ActHandler _actHandler;
 	private Settings? _settings;
 	private Services _services;
@@ -58,6 +61,7 @@ public class Plugin : IDalamudPlugin
 
 		_overlays.Clear();
 
+		_readyWatchdog?.Dispose();
 		_renderProcess?.Dispose();
 
 		_settings?.Dispose();
@@ -85,6 +89,7 @@ public class Plugin : IDalamudPlugin
 		_renderProcess = new RenderProcess(pid, _pluginDir, _pluginConfigDir, _dependencyManager, Services.PluginLog);
 		_renderProcess.RendererReady += msg =>
 		{
+			_rendererReady = true;
 			if (!msg.HasDxSharedTexturesSupport)
 			{
 				Services.PluginLog.Error("Could not initialize shared textures transport. Browsingway will not work.");
@@ -129,7 +134,13 @@ public class Plugin : IDalamudPlugin
 				}
 			});
 		};
+		// A restart that comes back healthy re-arms this; a give-up does not, since it reports itself.
+		_renderProcess.Crashed += (_, _) =>
+		{
+			if (_renderProcess.IsRunning) { ArmReadyWatchdog(); }
+		};
 		_renderProcess.Start();
+		ArmReadyWatchdog();
 
 		// Prep settings
 		_settings = new Settings(CacheSlotPolicy.PortForSlot(_renderProcess.CacheSlot));
@@ -148,6 +159,19 @@ public class Plugin : IDalamudPlugin
 		// Hook up the main BW command
 		Services.CommandManager.AddHandler(_command,
 			new CommandInfo(HandleCommand) {HelpMessage = "Control Browsingway from the chat line! Type '/bw config' or open the settings for more info.", ShowInHelp = true});
+	}
+
+	private void ArmReadyWatchdog()
+	{
+		_rendererReady = false;
+		_readyWatchdog?.Dispose();
+		_readyWatchdog = new Timer(_ =>
+		{
+			if (_rendererReady) { return; }
+
+			Services.Framework.RunOnFrameworkThread(() =>
+				Services.Chat.PrintError($"Browsingway: renderer started but never reported ready after {_readyTimeoutMs / 1000}s; overlays are not up."));
+		}, null, _readyTimeoutMs, Timeout.Infinite);
 	}
 
 	private (bool, long) OnWndProc(WindowsMessage msg, ulong wParam, long lParam)

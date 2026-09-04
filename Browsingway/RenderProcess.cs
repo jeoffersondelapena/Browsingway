@@ -28,6 +28,7 @@ internal class RenderProcess : IDisposable
 
 	public int CacheSlot => _cacheSlot;
 	public uint RestartCount => _restartCount;
+	public bool IsRunning => _running;
 
 	private const string _cefCacheDirName = "cef-cache";
 	private const int _maxCacheSlots = 16;
