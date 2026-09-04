@@ -37,6 +37,7 @@ internal class RenderProcess : IDisposable
 	private uint _restartCount = 0;
 
 	private const uint _maxRestarts = 5;
+	private const int _restartDelayMs = 5000;
 	private const uint _checkDelaySeconds = 1;
 	private const uint _processOkAfterSeconds = 5;
 
@@ -279,6 +280,8 @@ internal class RenderProcess : IDisposable
 					_restartCount++;
 					Services.PluginLog.Error($"Render process crashed - will restart asap (attempt {_restartCount}/{_maxRestarts}).");
 					DiagLog.Write($"renderer crashed, restart {_restartCount}/{_maxRestarts}");
+					// Spawning into the crashed renderer's teardown has collided with its sections and once hung the game.
+					Thread.Sleep(_restartDelayMs);
 					OpenChannel();
 					DiagLog.Write("ipc channel rebuilt for the restart");
 					_process = SetupProcess();
