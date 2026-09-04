@@ -100,7 +100,14 @@ internal class RenderProcess : IDisposable
 
 				if (IsAlive(rendererPid))
 				{
-					Process.GetProcessById(rendererPid).Kill();
+					Process renderer = Process.GetProcessById(rendererPid);
+					renderer.Kill();
+					if (!renderer.WaitForExit(5000))
+					{
+						DiagLog.Write($"renderer {rendererPid} did not exit; leaving {dir} to the next slot");
+						continue;
+					}
+
 					Services.PluginLog.Info($"Removed renderer {rendererPid} left behind by game {gamePid} in {dir}");
 					DiagLog.Write($"swept renderer {rendererPid} left behind by game {gamePid} in {dir}");
 				}
