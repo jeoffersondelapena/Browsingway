@@ -22,6 +22,7 @@ internal static class Program
 
 	private static bool _isShuttingDown;
 	private static readonly object _lockIpc = new();
+	private static readonly ReadyGate _ready = new();
 
 	private static void Main(string[] rawArgs)
 	{
@@ -57,6 +58,7 @@ internal static class Program
 
 		bool dxRunning = DxHandler.Initialise(new LUID {LowPart = args.DxgiAdapterLuidLow, HighPart = args.DxgiAdapterLuidHigh});
 		CefHandler.Initialise(_cefAssemblyDir, args.CefCacheDir, args.ParentPid);
+		_ready.Open();
 
 		Console.WriteLine("Notifying on ready state.");
 
@@ -72,6 +74,8 @@ internal static class Program
 			_isShuttingDown = true;
 		}
 
+		_ready.Abandon();
+
 		DxHandler.Shutdown();
 		CefHandler.Shutdown();
 	}
@@ -80,17 +84,25 @@ internal static class Program
 	private static void InitializeIpc(string channelName)
 	{
 		_rpc = new RendererRpc(channelName);
-		_rpc.Debug += RpcOnDebug;
-		_rpc.Mute += RpcOnMute;
-		_rpc.Navigate += RpcOnNavigate;
-		_rpc.Zoom += RpcOnZoom;
-		_rpc.KeyEvent += RpcOnKeyEvent;
-		_rpc.MouseButton += RpcOnMouseButton;
-		_rpc.NewOverlay += RpcOnNewOverlay;
-		_rpc.RemoveOverlay += RpcOnRemoveOverlay;
-		_rpc.ResizeOverlay += RpcOnResizeOverlay;
-		_rpc.InjectUserCss += RpcOnInjectUserCss;
+		_rpc.Debug += Gated<DebugMessage>(RpcOnDebug);
+		_rpc.Mute += Gated<MuteMessage>(RpcOnMute);
+		_rpc.Navigate += Gated<NavigateMessage>(RpcOnNavigate);
+		_rpc.Zoom += Gated<ZoomMessage>(RpcOnZoom);
+		_rpc.KeyEvent += Gated<KeyEventMessage>(RpcOnKeyEvent);
+		_rpc.MouseButton += Gated<MouseButtonMessage>(RpcOnMouseButton);
+		_rpc.NewOverlay += Gated<NewOverlayMessage>(RpcOnNewOverlay);
+		_rpc.RemoveOverlay += Gated<RemoveOverlayMessage>(RpcOnRemoveOverlay);
+		_rpc.ResizeOverlay += Gated<ResizeOverlayMessage>(RpcOnResizeOverlay);
+		_rpc.InjectUserCss += Gated<InjectUserCssMessage>(RpcOnInjectUserCss);
 	}
+
+	private static Action<T> Gated<T>(Action<T> handler) => msg =>
+	{
+		if (_ready.WaitUntilOpen())
+		{
+			handler(msg);
+		}
+	};
 
 	private static void RpcOnInjectUserCss(InjectUserCssMessage msg)
 	{
