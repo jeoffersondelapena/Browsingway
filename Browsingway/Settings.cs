@@ -27,10 +27,16 @@ internal class Settings : IDisposable
 	private InlayConfiguration? _selectedOverlay;
 	private Timer? _saveDebounceTimer;
 
-	public Settings()
+	public Settings(int localPort)
 	{
 		Services.PluginInterface.UiBuilder.OpenConfigUi += () => _open = true;
 		Config = Services.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+
+		// The shared config names one port; deriving it from the slot keeps a reload off a sibling's.
+		foreach (InlayConfiguration inlay in Config.Inlays)
+		{
+			inlay.Url = CacheSlotPolicy.RepointLocalhost(inlay.Url, localPort);
+		}
 	}
 
 	public void Dispose() { }

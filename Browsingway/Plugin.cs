@@ -126,7 +126,7 @@ public class Plugin : IDalamudPlugin
 		_renderProcess.Start();
 
 		// Prep settings
-		_settings = new Settings();
+		_settings = new Settings(CacheSlotPolicy.PortForSlot(_renderProcess.CacheSlot));
 		if (_settings is not null)
 		{
 			_settings.OverlayAdded += OnOverlayAdded;

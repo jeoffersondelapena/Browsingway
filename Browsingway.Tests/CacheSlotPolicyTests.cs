@@ -104,3 +104,39 @@ public class SlotNameTests
 		Assert.Equal(expected, CacheSlotPolicy.SlotName("cef-cache", slot));
 	}
 }
+
+public class LocalPortTests
+{
+	[Theory]
+	[InlineData(1, 10501)]
+	[InlineData(2, 10502)]
+	public void PortFollowsSlot(int slot, int port)
+	{
+		Assert.Equal(port, CacheSlotPolicy.PortForSlot(slot));
+	}
+
+	[Fact]
+	public void RepointsBothOverlayUrlShapes()
+	{
+		// cactbot carries a /ws suffix, kagerou does not; both must keep everything but the port.
+		Assert.Equal("http://x/raidboss.html?OVERLAY_WS=ws://127.0.0.1:10502/ws",
+			CacheSlotPolicy.RepointLocalhost("http://x/raidboss.html?OVERLAY_WS=ws://127.0.0.1:10501/ws", 10502));
+		Assert.Equal("http://proxy.iinact.com/overlay/kagerou/?HOST_PORT=ws://127.0.0.1:10501",
+			CacheSlotPolicy.RepointLocalhost("http://proxy.iinact.com/overlay/kagerou/?HOST_PORT=ws://127.0.0.1:10502", 10501));
+	}
+
+	[Fact]
+	public void LeavesNonLocalhostAndOtherPortsAlone()
+	{
+		Assert.Equal("https://example.com/page", CacheSlotPolicy.RepointLocalhost("https://example.com/page", 10502));
+		Assert.Equal("ws://127.0.0.1:8080/x", CacheSlotPolicy.RepointLocalhost("ws://127.0.0.1:8080/x", 10502));
+		Assert.Equal("about:blank", CacheSlotPolicy.RepointLocalhost("about:blank", 10502));
+	}
+
+	[Fact]
+	public void IsIdempotent()
+	{
+		string once = CacheSlotPolicy.RepointLocalhost("ws://127.0.0.1:10501/ws", 10502);
+		Assert.Equal(once, CacheSlotPolicy.RepointLocalhost(once, 10502));
+	}
+}

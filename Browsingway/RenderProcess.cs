@@ -24,6 +24,9 @@ internal class RenderProcess : IDisposable
 
 	private readonly string _cefCacheDir;
 	private readonly FileStream? _cacheSlotLock;
+	private readonly int _cacheSlot;
+
+	public int CacheSlot => _cacheSlot;
 
 	private const string _cefCacheDirName = "cef-cache";
 	private const int _maxCacheSlots = 16;
@@ -52,7 +55,7 @@ internal class RenderProcess : IDisposable
 		_parentPid = pid;
 
 		DiagLog.Open(configDir, pid);
-		(_cefCacheDir, _cacheSlotLock) = ClaimCacheSlot(configDir);
+		(_cefCacheDir, _cacheSlotLock, _cacheSlot) = ClaimCacheSlot(configDir);
 		DiagLog.Write($"using cache slot {_cefCacheDir}, lock {(_cacheSlotLock is null ? "unheld" : "held")}");
 
 		try
@@ -153,7 +156,7 @@ internal class RenderProcess : IDisposable
 		catch (Exception) { return null; }
 	}
 
-	private (string dir, FileStream? slotLock) ClaimCacheSlot(string configDir)
+	private (string dir, FileStream? slotLock, int slot) ClaimCacheSlot(string configDir)
 	{
 		SweepAbandonedRenderers(configDir);
 
@@ -175,7 +178,7 @@ internal class RenderProcess : IDisposable
 					Services.PluginLog.Info($"Using CEF cache slot {slot} ({dir}); earlier slots are held by other instances");
 				}
 
-				return (dir, slotLock);
+				return (dir, slotLock, slot);
 			}
 			catch (IOException e)
 			{
@@ -186,12 +189,12 @@ internal class RenderProcess : IDisposable
 			{
 				// not another instance; the lock only arbitrates multiboxing, so run unlocked rather than fail
 				Services.PluginLog.Error(e, $"Could not open the CEF cache lock in {configDir}; running unlocked on {firstDir}");
-				return (firstDir, null);
+				return (firstDir, null, 1);
 			}
 		}
 
 		Services.PluginLog.Error(lastInUse, $"All {_maxCacheSlots} CEF cache slots are in use; running unlocked on {firstDir}");
-		return (firstDir, null);
+		return (firstDir, null, 1);
 	}
 
 	public void Dispose()
