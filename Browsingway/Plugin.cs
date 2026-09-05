@@ -26,6 +26,7 @@ public class Plugin : IDalamudPlugin
 	private ICallGateProvider<bool>? _ipcHealthy;
 	private ICallGateProvider<string>? _ipcStatus;
 	private ICallGateProvider<string, bool>? _ipcRestart;
+	private ICallGateProvider<bool>? _ipcReloadOverlays;
 	private DateTime _rendererStartAt;
 	private volatile bool _rendererReady;
 	private const int _readyTimeoutMs = 20000;
@@ -71,6 +72,7 @@ public class Plugin : IDalamudPlugin
 		_ipcHealthy?.UnregisterFunc();
 		_ipcStatus?.UnregisterFunc();
 		_ipcRestart?.UnregisterFunc();
+		_ipcReloadOverlays?.UnregisterFunc();
 		_renderProcess?.Dispose();
 
 		_settings?.Dispose();
@@ -179,6 +181,8 @@ public class Plugin : IDalamudPlugin
 		_ipcHealthy.RegisterFunc(() => OverlayStatus.Healthy(_renderProcess.IsRunning, _rendererReady));
 		_ipcStatus.RegisterFunc(StatusLine);
 		_ipcRestart.RegisterFunc(RestartRenderer);
+		_ipcReloadOverlays = Services.PluginInterface.GetIpcProvider<bool>("Browsingway.ReloadOverlays");
+		_ipcReloadOverlays.RegisterFunc(ReloadOverlays);
 
 		Services.CommandManager.AddHandler(_command,
 			new CommandInfo(HandleCommand) {HelpMessage = "Control Browsingway from the chat line! Type '/bw config' or open the settings for more info.", ShowInHelp = true});
@@ -210,6 +214,17 @@ public class Plugin : IDalamudPlugin
 			{
 				Services.Framework.RunOnFrameworkThread(() => Services.Chat.PrintError("Browsingway: renderer restart failed; use /xldisableplugintemp Browsingway then /xlenableplugintemp Browsingway."));
 			}
+		});
+		return true;
+	}
+
+	private bool ReloadOverlays()
+	{
+		if (_settings is null) { return false; }
+		Services.Framework.RunOnFrameworkThread(() =>
+		{
+			_settings.ReloadAllOverlays();
+			Services.Chat.Print("Browsingway: overlay pages reloaded.");
 		});
 		return true;
 	}
@@ -313,7 +328,7 @@ public class Plugin : IDalamudPlugin
 		if (args.Length == 0)
 		{
 			Services.Chat.PrintError(
-				"No subcommand specified. Valid subcommands are: config,overlay,status,restart.");
+				"No subcommand specified. Valid subcommands are: config,overlay,status,restart,reload.");
 			return;
 		}
 
@@ -336,9 +351,12 @@ public class Plugin : IDalamudPlugin
 			case "restart":
 				RestartRenderer("requested");
 				break;
+			case "reload":
+				ReloadOverlays();
+				break;
 			default:
 				Services.Chat.PrintError(
-					$"Unknown subcommand '{args[0]}'. Valid subcommands are: config,overlay,inlay,status,restart.");
+					$"Unknown subcommand '{args[0]}'. Valid subcommands are: config,overlay,inlay,status,restart,reload.");
 				break;
 		}
 	}

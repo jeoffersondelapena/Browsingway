@@ -198,6 +198,12 @@ internal class Settings : IDisposable
 
 	private void ReloadOverlay(InlayConfiguration overlayConfig) { NavigateOverlay(overlayConfig); }
 
+	// The meter page never re-subscribes after its websocket comes back.
+	public void ReloadAllOverlays()
+	{
+		foreach (InlayConfiguration inlay in Config.Inlays) { NavigateOverlay(inlay); }
+	}
+
 	private void DebugOverlay(InlayConfiguration overlayConfig)
 	{
 		OverlayDebugged?.Invoke(this, overlayConfig);
