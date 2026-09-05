@@ -36,6 +36,13 @@ The initial release focused on making the overlays work again, the focus now res
 
 You can also open an issue for new feature requests.
 
+## This fork (macOS)
+
+Runs two game clients side by side under XIV on Mac: one CEF cache slot per client, the overlay port
+derived from the slot, a deferred renderer start, and a restart path that survives a dead renderer.
+Tests live in `Browsingway.Tests` (`dotnet test Browsingway.Tests`); they run before every commit once
+the versioned hook is enabled with `git config core.hooksPath .githooks`.
+
 ## ACT support ##
 For ACT overlays to work correctly the overlay WSServer has to be enabled. ACT also provides an URL generator that will create the correct URLs to use within Browsingway:
 

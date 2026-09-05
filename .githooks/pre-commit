@@ -1,0 +1,17 @@
+#!/bin/sh
+# Runs every test project before a commit lands. Enable once per clone:
+#   git config core.hooksPath .githooks
+set -e
+cd "$(git rev-parse --show-toplevel)"
+DOTNET="${DOTNET:-$(command -v dotnet 2>/dev/null || echo "$HOME/.dotnet/dotnet")}"
+for project in *.Tests/*.csproj; do
+    [ -e "$project" ] || continue
+    "$DOTNET" test "$project" -nodeReuse:false --nologo -v q || {
+        echo "pre-commit: tests failed in $project" >&2
+        exit 1
+    }
+done
+# Local-only checks (comment density and tone) live outside the repo; run them when present.
+if [ -x .git/hooks/pre-commit ]; then
+    .git/hooks/pre-commit
+fi
