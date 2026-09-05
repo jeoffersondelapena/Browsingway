@@ -36,9 +36,11 @@ jobs:
           dotnet-version: 10.0.x
       - name: Dalamud dev assemblies
         run: |
+          # The sub-projects' macOS default path wins over DALAMUD_HOME, so mirror the Mac's layout exactly.
+          DEV="$HOME/Library/Application Support/XIV on Mac/dalamud/Hooks/dev"
           curl -fsSL https://goatcorp.github.io/dalamud-distrib/latest.zip -o /tmp/dalamud.zip
-          mkdir -p "$HOME/dalamud" && unzip -q /tmp/dalamud.zip -d "$HOME/dalamud"
-          echo "DALAMUD_HOME=$HOME/dalamud" >> "$GITHUB_ENV"
+          mkdir -p "$DEV" && unzip -q /tmp/dalamud.zip -d "$DEV"
+          echo "DALAMUD_HOME=$DEV" >> "$GITHUB_ENV"
       - name: Test
         run: dotnet test Browsingway.Tests/Browsingway.Tests.csproj -nodeReuse:false
       - name: Build
