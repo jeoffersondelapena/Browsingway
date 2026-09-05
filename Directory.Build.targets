@@ -1,0 +1,7 @@
+<Project>
+  <!-- Point git at the versioned hooks on the first build, so a fresh clone is covered without anyone remembering. -->
+  <Target Name="EnableVersionedGitHooks" BeforeTargets="Build" Condition="Exists('$(MSBuildThisFileDirectory).git')">
+    <Exec Command="git config core.hooksPath .githooks" WorkingDirectory="$(MSBuildThisFileDirectory)"
+          ContinueOnError="true" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low" />
+  </Target>
+</Project>
