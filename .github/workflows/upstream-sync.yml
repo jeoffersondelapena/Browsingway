@@ -1,0 +1,59 @@
+# Rebase macos onto upstream, test and build on a Mac, publish the build by commit, push. A conflict fails and leaves the branch alone.
+name: upstream-sync
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: upstream-sync
+jobs:
+  sync:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: macos
+          fetch-depth: 0
+          submodules: recursive
+      - name: Rebase onto upstream
+        id: rebase
+        run: |
+          git config user.name upstream-sync
+          git config user.email upstream-sync@users.noreply.github.com
+          git remote add upstream https://github.com/Styr1x/Browsingway.git
+          git fetch upstream main
+          before=$(git rev-parse HEAD)
+          if ! git rebase upstream/main; then
+            git rebase --abort
+            echo "::error::rebase onto upstream/main conflicts; resolve it by hand"
+            exit 1
+          fi
+          git submodule update --init --recursive
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "upstream=$(git rev-parse upstream/main)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Dalamud dev assemblies
+        run: |
+          curl -fsSL https://goatcorp.github.io/dalamud-distrib/latest.zip -o /tmp/dalamud.zip
+          mkdir -p "$HOME/dalamud" && unzip -q /tmp/dalamud.zip -d "$HOME/dalamud"
+          echo "DALAMUD_HOME=$HOME/dalamud" >> "$GITHUB_ENV"
+      - name: Test
+        run: dotnet test Browsingway.Tests/Browsingway.Tests.csproj -nodeReuse:false
+      - name: Build
+        run: dotnet build Browsingway/Browsingway.csproj -c Release -nodeReuse:false
+      - name: Describe the build
+        run: |
+          cd out
+          find . -type f ! -name SHA256SUMS ! -name COMMIT ! -name UPSTREAM -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS
+          echo "${{ steps.rebase.outputs.sha }}" > COMMIT
+          echo "${{ steps.rebase.outputs.upstream }}" > UPSTREAM
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Browsingway-${{ steps.rebase.outputs.sha }}
+          path: out
+          retention-days: 30
+      - name: Push the rebased branch
+        if: steps.rebase.outputs.sha != steps.rebase.outputs.before
+        run: git push --force-with-lease=macos:${{ steps.rebase.outputs.before }} origin HEAD:macos
