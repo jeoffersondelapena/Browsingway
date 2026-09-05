@@ -27,7 +27,6 @@ public class Plugin : IDalamudPlugin
 	private ICallGateProvider<string>? _ipcStatus;
 	private ICallGateProvider<string, bool>? _ipcRestart;
 	private DateTime _rendererStartAt;
-	private const int _rendererStartDelayMs = 20000;
 	private volatile bool _rendererReady;
 	private const int _readyTimeoutMs = 20000;
 	private ActHandler _actHandler;
@@ -150,8 +149,12 @@ public class Plugin : IDalamudPlugin
 			if (_renderProcess.IsRunning) { ArmReadyWatchdog(); }
 		};
 		// Wine's spawn forks with the allocator locks held; doing it mid plugin-load burst has hung the game.
-		_rendererStartAt = DateTime.Now.AddMilliseconds(_rendererStartDelayMs);
-		DiagLog.Write($"renderer start deferred {_rendererStartDelayMs / 1000}s past plugin load");
+		TimeSpan gameAge = DateTime.Now - Process.GetCurrentProcess().StartTime;
+		int delayMs = RendererStartPolicy.DelayMs(gameAge);
+		_rendererStartAt = DateTime.Now.AddMilliseconds(delayMs);
+		DiagLog.Write(delayMs > 0
+			? $"renderer start deferred {delayMs / 1000}s past plugin load"
+			: $"renderer starting now; the game has been up for {gameAge.TotalMinutes:F0} min");
 		Services.Framework.Update += StartRendererWhenQuiet;
 
 		// Prep settings
