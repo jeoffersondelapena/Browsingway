@@ -3,6 +3,7 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
+using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Services;
 using Dalamud.Bindings.ImGui;
 using System.Diagnostics;
@@ -22,6 +23,9 @@ public class Plugin : IDalamudPlugin
 
 	private RenderProcess? _renderProcess;
 	private Timer? _readyWatchdog;
+	private ICallGateProvider<bool>? _ipcHealthy;
+	private ICallGateProvider<string>? _ipcStatus;
+	private ICallGateProvider<string, bool>? _ipcRestart;
 	private DateTime _rendererStartAt;
 	private const int _rendererStartDelayMs = 20000;
 	private volatile bool _rendererReady;
@@ -65,6 +69,9 @@ public class Plugin : IDalamudPlugin
 
 		Services.Framework.Update -= StartRendererWhenQuiet;
 		_readyWatchdog?.Dispose();
+		_ipcHealthy?.UnregisterFunc();
+		_ipcStatus?.UnregisterFunc();
+		_ipcRestart?.UnregisterFunc();
 		_renderProcess?.Dispose();
 
 		_settings?.Dispose();
@@ -162,6 +169,14 @@ public class Plugin : IDalamudPlugin
 		}
 
 		// Hook up the main BW command
+		// Overlay Doctor asks these to decide whether the renderer needs a respawn.
+		_ipcHealthy = Services.PluginInterface.GetIpcProvider<bool>("Browsingway.Healthy");
+		_ipcStatus = Services.PluginInterface.GetIpcProvider<string>("Browsingway.Status");
+		_ipcRestart = Services.PluginInterface.GetIpcProvider<string, bool>("Browsingway.Restart");
+		_ipcHealthy.RegisterFunc(() => OverlayStatus.Healthy(_renderProcess.IsRunning, _rendererReady));
+		_ipcStatus.RegisterFunc(StatusLine);
+		_ipcRestart.RegisterFunc(RestartRenderer);
+
 		Services.CommandManager.AddHandler(_command,
 			new CommandInfo(HandleCommand) {HelpMessage = "Control Browsingway from the chat line! Type '/bw config' or open the settings for more info.", ShowInHelp = true});
 	}
@@ -173,6 +188,27 @@ public class Plugin : IDalamudPlugin
 		Services.Framework.Update -= StartRendererWhenQuiet;
 		_renderProcess?.Start();
 		ArmReadyWatchdog();
+	}
+
+	private string StatusLine()
+	{
+		if (_renderProcess is null) { return "renderer not created yet"; }
+		return OverlayStatus.Describe(_renderProcess.IsRunning, _rendererReady, CacheSlotPolicy.PortForSlot(_renderProcess.CacheSlot), _renderProcess.RestartCount);
+	}
+
+	private bool RestartRenderer(string reason)
+	{
+		if (_renderProcess is null) { return false; }
+		Services.Chat.Print($"Browsingway: restarting the renderer ({reason}).");
+		_rendererReady = false;
+		Task.Run(() =>
+		{
+			if (!_renderProcess.Restart(reason))
+			{
+				Services.Framework.RunOnFrameworkThread(() => Services.Chat.PrintError("Browsingway: renderer restart failed; use /xldisableplugintemp Browsingway then /xlenableplugintemp Browsingway."));
+			}
+		});
+		return true;
 	}
 
 	private void ArmReadyWatchdog()
@@ -274,7 +310,7 @@ public class Plugin : IDalamudPlugin
 		if (args.Length == 0)
 		{
 			Services.Chat.PrintError(
-				"No subcommand specified. Valid subcommands are: config,overlay.");
+				"No subcommand specified. Valid subcommands are: config,overlay,status,restart.");
 			return;
 		}
 
@@ -291,9 +327,15 @@ public class Plugin : IDalamudPlugin
 			case "overlay":
 				_settings?.HandleOverlayCommand(subcommandArgs);
 				break;
+			case "status":
+				Services.Chat.Print($"Browsingway: {StatusLine()}.");
+				break;
+			case "restart":
+				RestartRenderer("requested");
+				break;
 			default:
 				Services.Chat.PrintError(
-					$"Unknown subcommand '{args[0]}'. Valid subcommands are: config,overlay,inlay.");
+					$"Unknown subcommand '{args[0]}'. Valid subcommands are: config,overlay,inlay,status,restart.");
 				break;
 		}
 	}

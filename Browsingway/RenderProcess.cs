@@ -309,6 +309,38 @@ internal class RenderProcess : IDisposable
 		});
 	}
 
+	/// <summary>Kill the renderer and start a fresh one on the same cache slot; overlays re-attach through Crashed.</summary>
+	public bool Restart(string reason)
+	{
+		if (0 != Interlocked.Exchange(ref _restarting, 1)) { return false; }
+		try
+		{
+			DiagLog.Write($"renderer restart requested: {reason}");
+			Stop();
+			OpenChannel();
+			_process = SetupProcess();
+			_process.Start();
+			_process.BeginOutputReadLine();
+			_process.BeginErrorReadLine();
+			RecordOwner();
+			_hasExited = false;
+			_running = true;
+			DiagLog.Write("renderer restarted on request", _process);
+			OnProcessCrashed();
+			return true;
+		}
+		catch (Exception e)
+		{
+			Services.PluginLog.Error(e, "Failed to restart render process on request");
+			DiagLog.Write($"renderer restart on request failed: {e.Message}");
+			return false;
+		}
+		finally
+		{
+			Interlocked.Exchange(ref _restarting, 0);
+		}
+	}
+
 	public void Stop()
 	{
 		if (!_running) { return; }
