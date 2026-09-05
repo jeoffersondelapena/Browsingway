@@ -317,11 +317,16 @@ internal class RenderProcess : IDisposable
 		DiagLog.Write($"renderer restart requested: {reason}");
 		try
 		{
-			_process.Kill(true);
+			// Not the tree: enumerating children reads start times, and Wine hands back garbage ones.
+			_process.Kill();
 			return true;
 		}
 		catch (Exception e)
 		{
+			bool gone = false;
+			try { gone = _process.HasExited; }
+			catch (Exception) { }
+			if (gone) { return true; }
 			Services.PluginLog.Error(e, "Failed to stop the render process for a restart");
 			DiagLog.Write($"renderer restart on request failed: {e.Message}");
 			return false;
