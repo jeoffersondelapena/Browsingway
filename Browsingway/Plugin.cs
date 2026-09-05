@@ -212,14 +212,13 @@ public class Plugin : IDalamudPlugin
 	{
 		if (_renderProcess is null) { return false; }
 		Services.Chat.Print($"Browsingway: restarting the renderer ({reason}).");
+		// Unready at once so a caller polling health sees the restart begin; a failed kill puts the old value back.
+		bool wasReady = _rendererReady;
+		_rendererReady = false;
 		Task.Run(() =>
 		{
-			// Marked unready only once the old renderer is really gone, so a failed kill leaves the health honest.
-			if (_renderProcess.Restart(reason))
-			{
-				_rendererReady = false;
-				return;
-			}
+			if (_renderProcess.Restart(reason)) { return; }
+			_rendererReady = wasReady;
 			Services.Framework.RunOnFrameworkThread(() => Services.Chat.PrintError("Browsingway: renderer restart failed; the old renderer is still running; use /xldisableplugintemp Browsingway then /xlenableplugintemp Browsingway."));
 		});
 		return true;
