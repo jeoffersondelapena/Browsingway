@@ -14,6 +14,7 @@
 		<Compile Include="..\Browsingway\Guarded.cs" Link="Guarded.cs" />
 		<Compile Include="..\Browsingway\OverlayStatus.cs" Link="OverlayStatus.cs" />
 		<Compile Include="..\Browsingway\RendererStartPolicy.cs" Link="RendererStartPolicy.cs" />
+		<Compile Include="..\Browsingway\IpcChannel.cs" Link="IpcChannel.cs" />
 		<Compile Include="..\Browsingway.Renderer\ReadyGate.cs" Link="ReadyGate.cs" />
 	</ItemGroup>
 

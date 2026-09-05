@@ -17,6 +17,7 @@ internal class RenderProcess : IDisposable
 	private readonly DependencyManager _dependencyManager;
 
 	private readonly string _ipcChannelName;
+	private string _channelName = "";
 
 	private readonly string _keepAliveHandleName;
 	private readonly int _parentPid;
@@ -63,9 +64,7 @@ internal class RenderProcess : IDisposable
 
 		try
 		{
-			DiagLog.Write($"opening ipc channel {_ipcChannelName}");
 			OpenChannel();
-			DiagLog.Write("ipc channel open");
 			_process = SetupProcess();
 		}
 		catch
@@ -80,9 +79,11 @@ internal class RenderProcess : IDisposable
 
 	private void OpenChannel()
 	{
+		_channelName = IpcChannel.Fresh(_ipcChannelName);
+		DiagLog.Write($"opening ipc channel {_channelName}");
 		_rpc.Replace(() =>
 		{
-			BrowsingwayRpc rpc = new(_ipcChannelName);
+			BrowsingwayRpc rpc = new(_channelName);
 			// Forwarding is re-attached per channel; binding subscribers to the instance would drop
 			// them on a restart, leaving a healthy renderer with no overlays.
 			rpc.SetCursor += msg => SetCursor?.Invoke(msg);
@@ -395,7 +396,7 @@ internal class RenderProcess : IDisposable
 			DxgiAdapterLuidLow = DxHandler.AdapterLuid.LowPart,
 			DxgiAdapterLuidHigh = DxHandler.AdapterLuid.HighPart,
 			KeepAliveHandleName = _keepAliveHandleName,
-			IpcChannelName = _ipcChannelName
+			IpcChannelName = _channelName
 		};
 
 		Process process = new();
