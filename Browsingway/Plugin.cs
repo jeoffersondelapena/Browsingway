@@ -22,6 +22,8 @@ public class Plugin : IDalamudPlugin
 
 	private RenderProcess? _renderProcess;
 	private Timer? _readyWatchdog;
+	private DateTime _rendererStartAt;
+	private const int _rendererStartDelayMs = 20000;
 	private volatile bool _rendererReady;
 	private const int _readyTimeoutMs = 20000;
 	private ActHandler _actHandler;
@@ -61,6 +63,7 @@ public class Plugin : IDalamudPlugin
 
 		_overlays.Clear();
 
+		Services.Framework.Update -= StartRendererWhenQuiet;
 		_readyWatchdog?.Dispose();
 		_renderProcess?.Dispose();
 
@@ -139,8 +142,10 @@ public class Plugin : IDalamudPlugin
 		{
 			if (_renderProcess.IsRunning) { ArmReadyWatchdog(); }
 		};
-		_renderProcess.Start();
-		ArmReadyWatchdog();
+		// Wine's spawn forks with the allocator locks held; doing it mid plugin-load burst has hung the game.
+		_rendererStartAt = DateTime.Now.AddMilliseconds(_rendererStartDelayMs);
+		DiagLog.Write($"renderer start deferred {_rendererStartDelayMs / 1000}s past plugin load");
+		Services.Framework.Update += StartRendererWhenQuiet;
 
 		// Prep settings
 		_settings = new Settings(CacheSlotPolicy.PortForSlot(_renderProcess.CacheSlot));
@@ -159,6 +164,15 @@ public class Plugin : IDalamudPlugin
 		// Hook up the main BW command
 		Services.CommandManager.AddHandler(_command,
 			new CommandInfo(HandleCommand) {HelpMessage = "Control Browsingway from the chat line! Type '/bw config' or open the settings for more info.", ShowInHelp = true});
+	}
+
+	private void StartRendererWhenQuiet(IFramework framework)
+	{
+		if (DateTime.Now < _rendererStartAt) { return; }
+
+		Services.Framework.Update -= StartRendererWhenQuiet;
+		_renderProcess?.Start();
+		ArmReadyWatchdog();
 	}
 
 	private void ArmReadyWatchdog()
