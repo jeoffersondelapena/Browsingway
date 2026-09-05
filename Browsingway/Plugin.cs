@@ -27,6 +27,7 @@ public class Plugin : IDalamudPlugin
 	private ICallGateProvider<string>? _ipcStatus;
 	private ICallGateProvider<string, bool>? _ipcRestart;
 	private ICallGateProvider<bool>? _ipcReloadOverlays;
+	private ICallGateProvider<int>? _ipcPort;
 	private DateTime _rendererStartAt;
 	private volatile bool _rendererReady;
 	private const int _readyTimeoutMs = 20000;
@@ -73,6 +74,7 @@ public class Plugin : IDalamudPlugin
 		_ipcStatus?.UnregisterFunc();
 		_ipcRestart?.UnregisterFunc();
 		_ipcReloadOverlays?.UnregisterFunc();
+		_ipcPort?.UnregisterFunc();
 		_renderProcess?.Dispose();
 
 		_settings?.Dispose();
@@ -183,6 +185,9 @@ public class Plugin : IDalamudPlugin
 		_ipcRestart.RegisterFunc(RestartRenderer);
 		_ipcReloadOverlays = Services.PluginInterface.GetIpcProvider<bool>("Browsingway.ReloadOverlays");
 		_ipcReloadOverlays.RegisterFunc(ReloadOverlays);
+		// IINACT binds the same port this window's overlays will dial, instead of whatever the shared config holds.
+		_ipcPort = Services.PluginInterface.GetIpcProvider<int>("Browsingway.Port");
+		_ipcPort.RegisterFunc(() => _renderProcess is null ? 0 : CacheSlotPolicy.PortForSlot(_renderProcess.CacheSlot));
 
 		Services.CommandManager.AddHandler(_command,
 			new CommandInfo(HandleCommand) {HelpMessage = "Control Browsingway from the chat line! Type '/bw config' or open the settings for more info.", ShowInHelp = true});
