@@ -117,9 +117,15 @@ public class Plugin : IDalamudPlugin
 					_settings.HydrateOverlays();
 					int port = CacheSlotPolicy.PortForSlot(_renderProcess.CacheSlot);
 					uint restarts = _renderProcess.RestartCount;
-					Services.Chat.Print(restarts == 0
-						? $"Browsingway: overlays ready on port {port}."
-						: $"Browsingway: overlays recovered after {restarts} renderer restart(s) on port {port}.");
+					// Overlay Doctor reports the port at login; only a recovery is news here.
+					if (restarts == 0)
+					{
+						Services.PluginLog.Info($"Overlays ready on port {port}.");
+					}
+					else
+					{
+						Services.Chat.Print($"Browsingway: overlays recovered after {restarts} renderer restart(s) on port {port}.");
+					}
 				}
 			});
 		};
