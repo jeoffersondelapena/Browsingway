@@ -31,6 +31,15 @@ public class TextureWaitTests
 	}
 
 	[Fact]
+	public void After_the_renderer_was_lost_a_shown_overlay_is_blank_until_its_texture_is_back()
+	{
+		Assert.True(TextureWait.Blank(shown: true, rendererLost: true, blankMs: 0));
+		Assert.False(TextureWait.Blank(shown: false, rendererLost: true, blankMs: 600000));
+		Assert.False(TextureWait.Blank(shown: true, rendererLost: false, blankMs: 3500));
+		Assert.True(TextureWait.Blank(shown: true, rendererLost: false, blankMs: TextureWait.AskAgainAfterMs));
+	}
+
+	[Fact]
 	public void A_shown_overlay_is_overdue_only_after_the_wait_a_page_normally_needs()
 	{
 		Assert.False(TextureWait.Overdue(true, 0));

@@ -50,7 +50,9 @@ internal class Overlay : IDisposable
 	public Guid RenderGuid => _overlayConfig.Guid;
 	public string Name => _overlayConfig.Name;
 
-	public bool Blank(long now) => TextureWait.Overdue(now - _shownAt < 1000, _blankSince == 0 ? 0 : now - _blankSince);
+	public bool Blank(long now) => TextureWait.Blank(now - _shownAt < 1000, _hasRenderError, BlankFor(now));
+
+	private long BlankFor(long now) => _blankSince == 0 ? 0 : now - _blankSince;
 
 	public void Dispose()
 	{
@@ -171,7 +173,7 @@ internal class Overlay : IDisposable
 		{
 			if (_blankSince == 0) { _blankSince = now; }
 
-			if (_texErrorIcon is not null && (_textureRenderException is not null || Blank(now)))
+			if (_texErrorIcon is not null && (_textureRenderException is not null || TextureWait.Overdue(true, BlankFor(now))))
 			{
 				float lineHeight = ImGui.GetTextLineHeight();
 				float size = float.Min(_size.X - lineHeight * 3, _size.Y - lineHeight * 3);

@@ -9,4 +9,6 @@ public static class TextureWait
 	public static bool ShouldAskAgain(bool waiting, long waitedMs, int asks) => waiting && waitedMs >= AskAgainAfterMs && asks < MaxAsks;
 
 	public static bool Overdue(bool shown, long blankMs) => shown && blankMs >= AskAgainAfterMs;
+
+	public static bool Blank(bool shown, bool rendererLost, long blankMs) => shown && (rendererLost || blankMs >= AskAgainAfterMs);
 }
