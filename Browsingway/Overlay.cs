@@ -18,6 +18,10 @@ internal class Overlay : IDisposable
 	private bool _mouseInWindow;
 
 	private bool _resizing;
+	private long _askedAt;
+	private int _asks;
+	private long _shownAt;
+	private long _blankSince;
 	private Vector2 _size;
 	private bool _hasRenderError = false;
 	private SharedTextureHandler? _textureHandler;
@@ -34,6 +38,9 @@ internal class Overlay : IDisposable
 		{
 			_size = Vector2.Zero;
 			_hasRenderError = true;
+			// A request sent to the dead renderer gets no answer; without this the overlay never asks the new one.
+			_resizing = false;
+			_asks = 0;
 		};
 
 		_overlayConfig = overlayConfig;
@@ -41,6 +48,9 @@ internal class Overlay : IDisposable
 	}
 
 	public Guid RenderGuid => _overlayConfig.Guid;
+	public string Name => _overlayConfig.Name;
+
+	public bool Blank(long now) => TextureWait.Overdue(now - _shownAt < 1000, _blankSince == 0 ? 0 : now - _blankSince);
 
 	public void Dispose()
 	{
@@ -117,8 +127,12 @@ internal class Overlay : IDisposable
 		    (_overlayConfig.HideInPvP && Services.ClientState.IsPvP))
 		{
 			_mouseInWindow = false;
+			_blankSince = 0;
 			return;
 		}
+
+		long now = Environment.TickCount64;
+		_shownAt = now;
 
 		ImGui.SetNextWindowSize(new Vector2(640, 480), ImGuiCond.FirstUseEver);
 		ImGui.Begin($"{_overlayConfig.Name}###{_overlayConfig.Guid}", GetWindowFlags());
@@ -142,11 +156,11 @@ internal class Overlay : IDisposable
 			}
 		}
 
-		HandleWindowSize();
+		HandleWindowSize(now);
 
-		// TODO: Browsingway.Renderer can take some time to spin up properly, should add a loading state.
 		if (_textureHandler != null && !_hasRenderError)
 		{
+			_blankSince = 0;
 			HandleMouseEvent();
 
 			ImGui.PushStyleVar(ImGuiStyleVar.Alpha, _overlayConfig.Opacity / 100f);
@@ -155,7 +169,9 @@ internal class Overlay : IDisposable
 		}
 		else
 		{
-			if (_texErrorIcon is not null)
+			if (_blankSince == 0) { _blankSince = now; }
+
+			if (_texErrorIcon is not null && (_textureRenderException is not null || Blank(now)))
 			{
 				float lineHeight = ImGui.GetTextLineHeight();
 				float size = float.Min(_size.X - lineHeight * 3, _size.Y - lineHeight * 3);
@@ -171,7 +187,7 @@ internal class Overlay : IDisposable
 				}
 				else
 				{
-					ImGuiHelpers.CenteredText("An error occured while building the browser overlay texture. Check the log for more details.");
+					ImGuiHelpers.CenteredText("The renderer has sent no picture for this overlay; /bw restart starts it again.");
 				}
 
 				ImGui.PopStyleColor();
@@ -216,15 +232,23 @@ internal class Overlay : IDisposable
 
 	public void SetTexture(IntPtr handle)
 	{
+		if (_resizing) { DiagLog.Write($"overlay {Name}: texture {Environment.TickCount64 - _askedAt} ms after asking"); }
+
 		_resizing = false;
+		_asks = 0;
 		_hasRenderError = false;
 
 		SharedTextureHandler? oldTextureHandler = _textureHandler;
 		try
 		{
 			_textureHandler = new SharedTextureHandler(handle);
+			_textureRenderException = null;
 		}
-		catch (Exception e) { _textureRenderException = e; }
+		catch (Exception e)
+		{
+			_textureHandler = null;
+			_textureRenderException = e;
+		}
 
 		if (oldTextureHandler != null) { oldTextureHandler.Dispose(); }
 	}
@@ -303,13 +327,21 @@ internal class Overlay : IDisposable
 		}));
 	}
 
-	private void HandleWindowSize()
+	private void HandleWindowSize(long now)
 	{
 		Vector2 currentSize = ImGui.GetWindowContentRegionMax() - ImGui.GetWindowContentRegionMin();
+		if (TextureWait.ShouldAskAgain(_resizing, now - _askedAt, _asks))
+		{
+			DiagLog.Write($"overlay {Name}: no texture {(now - _askedAt) / 1000}s after asking; asking again ({_asks + 1}/{TextureWait.MaxAsks})");
+			_resizing = false;
+			_size = Vector2.Zero;
+		}
+
 		if (currentSize == _size || _resizing) { return; }
 
 		if (_size == Vector2.Zero)
 		{
+			DiagLog.Write($"overlay {Name}: asking the renderer for a page, {(int)currentSize.X}x{(int)currentSize.Y}");
 			_renderProcess.Send(rpc => rpc.NewOverlay(new NewOverlayMessage()
 			{
 				Guid = RenderGuid.ToByteArray(),
@@ -329,6 +361,8 @@ internal class Overlay : IDisposable
 		}
 
 		_resizing = true;
+		_askedAt = now;
+		_asks++;
 		_size = currentSize;
 	}
 

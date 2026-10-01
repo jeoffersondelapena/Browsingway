@@ -186,7 +186,7 @@ public class Plugin : IDalamudPlugin
 		_ipcHealthy = Services.PluginInterface.GetIpcProvider<bool>("Browsingway.Healthy");
 		_ipcStatus = Services.PluginInterface.GetIpcProvider<string>("Browsingway.Status");
 		_ipcRestart = Services.PluginInterface.GetIpcProvider<string, bool>("Browsingway.Restart");
-		_ipcHealthy.RegisterFunc(() => OverlayStatus.Healthy(_renderProcess.IsRunning, _rendererReady));
+		_ipcHealthy.RegisterFunc(() => OverlayStatus.Healthy(_renderProcess.IsRunning, _rendererReady, BlankOverlays()));
 		_ipcStatus.RegisterFunc(StatusLine);
 		_ipcRestart.RegisterFunc(RestartRenderer);
 		_ipcReloadOverlays = Services.PluginInterface.GetIpcProvider<bool>("Browsingway.ReloadOverlays");
@@ -211,7 +211,15 @@ public class Plugin : IDalamudPlugin
 	private string StatusLine()
 	{
 		if (_renderProcess is null) { return "renderer not created yet"; }
-		return OverlayStatus.Describe(_renderProcess.IsRunning, _rendererReady, CacheSlotPolicy.PortForSlot(_renderProcess.CacheSlot), _renderProcess.RestartCount);
+		return OverlayStatus.Describe(_renderProcess.IsRunning, _rendererReady, CacheSlotPolicy.PortForSlot(_renderProcess.CacheSlot), _renderProcess.RestartCount, BlankOverlays());
+	}
+
+	private string[] BlankOverlays()
+	{
+		long now = Environment.TickCount64;
+		// Asked from other plugins; an answer must not depend on which thread they call from.
+		try { return _overlays.Values.Where(overlay => overlay.Blank(now)).Select(overlay => overlay.Name).ToArray(); }
+		catch (InvalidOperationException) { return Array.Empty<string>(); }
 	}
 
 	private bool RestartRenderer(string reason)

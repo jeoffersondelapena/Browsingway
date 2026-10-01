@@ -20,6 +20,16 @@ public class OverlayStatusTests
 	}
 
 	[Fact]
+	public void An_overlay_on_screen_without_a_picture_is_not_healthy_and_is_named()
+	{
+		Assert.True(OverlayStatus.Healthy(true, true, Array.Empty<string>()));
+		Assert.False(OverlayStatus.Healthy(true, true, new[] { "DPS" }));
+		Assert.Equal("overlays ready on port 10501; no picture for DPS", OverlayStatus.Describe(true, true, 10501, 0, new[] { "DPS" }));
+		Assert.Equal("overlays ready on port 10501, 1 crash restart(s); no picture for DPS, Cactbot", OverlayStatus.Describe(true, true, 10501, 1, new[] { "DPS", "Cactbot" }));
+		Assert.Equal("overlays ready on port 10501", OverlayStatus.Describe(true, true, 10501, 0, Array.Empty<string>()));
+	}
+
+	[Fact]
 	public void Crash_restarts_are_mentioned_only_when_there_were_any()
 	{
 		Assert.Equal("overlays ready on port 10501, 2 crash restart(s)", OverlayStatus.Describe(true, true, 10501, 2));

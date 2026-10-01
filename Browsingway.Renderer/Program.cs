@@ -176,6 +176,7 @@ internal static class Program
 			};
 
 			_ = _rpc.UpdateTexture(guid, renderHandler.SharedTextureHandle);
+			Console.WriteLine($"Overlay {msg.Id}: page created, texture handle sent.");
 		}
 	}
 
